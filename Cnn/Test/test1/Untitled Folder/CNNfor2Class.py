@@ -12,7 +12,6 @@ __author__ = 'thilina'
 
 
 def readData():
-
     # parent image directory
     imagedir = '/home/thilina/Data/test2'
     # probability to insert a data into training or test data set
@@ -26,7 +25,7 @@ def readData():
         onlyFiles = [f for f in os.listdir(imagedir + '/' + onlyFolders[i]) if
                      os.path.isfile(os.path.join(imagedir + '/' + onlyFolders[i], f))]
         print(str(len(onlyFiles)) + " images of " + onlyFolders[i])
-        count = 1
+        count = 2
         # for each file in the folder
         for ii in range(len(onlyFiles)):
             # load image using cv
@@ -43,7 +42,6 @@ def readData():
             # print (Imgtmp.shape) - (80, 80)
             # resize image to 50 x 50
             Imgtmp = cv2.resize(Imgtmp, (100, 100))
-
 
             if count == 1:
                 scipy.misc.imsave('/home/thilina/Data/outfile.jpg', Imgtmp)
@@ -116,43 +114,41 @@ def readData():
 
 
 def build_cnn(input_var=None):
-
     network = lasagne.layers.InputLayer(shape=(None, 1, 100, 100),
                                         input_var=input_var)
 
     network = lasagne.layers.Conv2DLayer(
-            network, num_filters=15, filter_size=(3, 3),
-            nonlinearity=lasagne.nonlinearities.rectify,
-            W=lasagne.init.GlorotUniform())
+        network, num_filters=15, filter_size=(3, 3),
+        nonlinearity=lasagne.nonlinearities.rectify,
+        W=lasagne.init.GlorotUniform())
 
     network = lasagne.layers.MaxPool2DLayer(network, pool_size=(2, 2))
 
     network = lasagne.layers.Conv2DLayer(
-            network, num_filters=15, filter_size=(3, 3),
-            nonlinearity=lasagne.nonlinearities.rectify)
+        network, num_filters=15, filter_size=(3, 3),
+        nonlinearity=lasagne.nonlinearities.rectify)
 
     network = lasagne.layers.MaxPool2DLayer(network, pool_size=(2, 2))
 
     network = lasagne.layers.DenseLayer(
-            network,
-            num_units=30,
-            nonlinearity=lasagne.nonlinearities.rectify)
+        network,
+        num_units=30,
+        nonlinearity=lasagne.nonlinearities.rectify)
 
     network = lasagne.layers.DenseLayer(
-            network,
-            num_units=30,
-            nonlinearity=lasagne.nonlinearities.rectify)
+        network,
+        num_units=30,
+        nonlinearity=lasagne.nonlinearities.rectify)
 
     network = lasagne.layers.DenseLayer(
-            network,
-            num_units=2,
-            nonlinearity=lasagne.nonlinearities.softmax)
+        network,
+        num_units=2,
+        nonlinearity=lasagne.nonlinearities.softmax)
 
     return network
 
 
 def main(num_epochs=2):
-
     print("Loading data...")
 
     # read data
@@ -207,8 +203,10 @@ def main(num_epochs=2):
     # Compile a second function computing the validation loss and accuracy:
     val_fn = theano.function([input_var, target_var], [test_loss, test_acc])
 
-    for epoch in range(num_epochs):
+    # compile to predict
+    predict = theano.function([input_var], test_prediction)
 
+    for epoch in range(num_epochs):
         start_time = time.time()
         # full pass over training data
         train_err = train_fn(X_train, Y_train)
@@ -225,9 +223,18 @@ def main(num_epochs=2):
 
     print("Final results:")
     print("  test loss:" + str(err))
-    print("  test accuracy:" + str(acc / X_test.shape[0] ))
+    print("  test accuracy:" + str(acc * 100))
+
+    predic = predict(X_test)
+    print (predic)
+    print (predic.shape)
+    print (T.argmax(predic, axis=1).eval())
+    print (Y_test)
+    print (Y_test.shape)
+
+    print (T.mean(T.eq(T.argmax(predic, axis=1), Y_test),
+                  dtype=theano.config.floatX).eval())
 
 
 if __name__ == '__main__':
     main(num_epochs=500)
-
