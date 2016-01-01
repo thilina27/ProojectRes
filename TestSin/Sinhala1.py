@@ -125,7 +125,7 @@ def build_cnn(input_var=None):
                                         input_var=input_var)
 
     network = lasagne.layers.Conv2DLayer(
-        network, num_filters=32, filter_size=(5, 5),
+        network, num_filters=40, filter_size=(5, 5),
         nonlinearity=lasagne.nonlinearities.rectify)
 
     network = lasagne.layers.MaxPool2DLayer(network, pool_size=(2, 2))
