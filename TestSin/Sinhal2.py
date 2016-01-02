@@ -15,7 +15,9 @@ def readData():
     # parent image directory
     imagedir = '/home/thilina/PycharmProjects/TestSin/Data'
     # probability to insert a data into training or test data set
-    p_train = 0.6
+    p_train = 5
+    test = 0
+
     # load all folders in the parent directory
     onlyFolders = [f for f in os.listdir(imagedir) if os.path.isdir(os.path.join(imagedir, f))]
 
@@ -61,8 +63,22 @@ def readData():
 
             # generate random number to make a test and training data set randomly
             rs = random.random()
+
             # if its less that p train add image to train data set
-            if rs < p_train:
+            if test < p_train:
+                if not 'X_test' in locals():
+                    X_test = Imgtmpresize[None, ...]
+                else:
+                    X_test = np.concatenate((X_test, Imgtmpresize[None, ...]), axis=0)
+                if not 'targets_test' in locals():
+                    targets_test = np.array([i])
+                else:
+                    targets_test = np.concatenate((targets_test, np.array([i])))
+
+                test += 1
+
+            # do same for all test data set
+            else:
                 # if not X_train variable not in the local variables create it using the image file
                 if not 'X_train' in locals():
                     # [None, ...] add another dimension to append all images to same array
@@ -81,16 +97,8 @@ def readData():
                     # append the next target to the same array in the same dimension
                     targets_train = np.concatenate((targets_train, np.array([i])))
 
-            # do same for all test data set
-            else:
-                if not 'X_test' in locals():
-                    X_test = Imgtmpresize[None, ...]
-                else:
-                    X_test = np.concatenate((X_test, Imgtmpresize[None, ...]), axis=0)
-                if not 'targets_test' in locals():
-                    targets_test = np.array([i])
-                else:
-                    targets_test = np.concatenate((targets_test, np.array([i])))
+        test = 0
+
 
     # typecast targets
     Y_test = targets_test.astype(np.int32)
@@ -120,18 +128,31 @@ def readData():
     return X_train, Y_train, X_test, Y_test
 
 
+def iterate_minibatches(inputs, targets, batchsize, shuffle=False):
+    assert len(inputs) == len(targets)
+    if shuffle:
+        indices = np.arange(len(inputs))
+        np.random.shuffle(indices)
+    for start_idx in range(0, len(inputs) - batchsize + 1, batchsize):
+        if shuffle:
+            excerpt = indices[start_idx:start_idx + batchsize]
+        else:
+            excerpt = slice(start_idx, start_idx + batchsize)
+        yield inputs[excerpt], targets[excerpt]
+
+
 def build_cnn(input_var=None):
     network = lasagne.layers.InputLayer(shape=(None, 1, 100, 100),
                                         input_var=input_var)
 
     network = lasagne.layers.Conv2DLayer(
-        network, num_filters=60, filter_size=(10, 10),
+        network, num_filters=50, filter_size=(5, 5),
         nonlinearity=lasagne.nonlinearities.rectify)
 
     network = lasagne.layers.MaxPool2DLayer(network, pool_size=(2, 2))
 
     network = lasagne.layers.Conv2DLayer(
-        network, num_filters=40, filter_size=(5, 5),
+        network, num_filters=38, filter_size=(5, 5),
         nonlinearity=lasagne.nonlinearities.rectify)
 
     network = lasagne.layers.MaxPool2DLayer(network, pool_size=(2, 2))
@@ -143,13 +164,15 @@ def build_cnn(input_var=None):
 
     network = lasagne.layers.DenseLayer(
         network,
-        num_units=4,
+        num_units=3,
         nonlinearity=lasagne.nonlinearities.softmax)
 
     return network
 
 
 def main(num_epochs=10):
+    maxac = 0
+    maxepoch = 0
     print("Loading data...")
 
     # read data
@@ -185,7 +208,7 @@ def main(num_epochs=10):
     # to update the weights
     params = lasagne.layers.get_all_params(network, trainable=True)
     updates = lasagne.updates.nesterov_momentum(
-        loss, params, learning_rate=0.01, momentum=0.8)
+        loss, params, learning_rate=0.01, momentum=0.9)
 
     # Create a loss expression for validation/testing. The crucial difference
     # here is that we do a deterministic forward pass through the network,
@@ -212,25 +235,61 @@ def main(num_epochs=10):
         start_time = time.time()
 
         train_err = 0
-        batch = 5
-        i = 0
+        train_batches = 0
 
-        while i < X_train.shape[0] - batch + 1:
-            # print (X_train[i:batch + i, ...].shape)
-            train_err += train_fn(X_train[i:batch + i, ...], Y_train[i:batch + i])
-            i += batch
+        for batch in iterate_minibatches(X_train, Y_train, 5, shuffle=True):
+            inputs, targets = batch
+            train_err += train_fn(inputs, targets)
+            train_batches += 1
 
         # Then we print the results for this epoch:
         print("Epoch {} of {} took {:.3f}s".format(
             epoch + 1, num_epochs, time.time() - start_time))
 
-        print("  training loss:" + str(train_err))
+        print("  training loss:" + str(train_err / train_batches))
+
+        val_err = 0
+        val_acc = 0
+        batch = 5
+        i = 0
+        testbatches = 0
+        # And a full pass over the validation data:
+        while i < X_test.shape[0] - batch + 1:
+            # print (X_val[i:batch + i, ...].shape)
+            err, acc = val_fn(X_test[i:batch + i, ...], Y_test[i:batch + i])
+            i += batch
+            val_err += err
+            val_acc += acc
+            testbatches += 1
+
+        print("  test loss:" + str(val_err / testbatches))
+        print("  test accuracy:" + str(val_acc / testbatches * 100))
+
+        val_err = 0
+        val_acc = 0
+        batch = 5
+        i = 0
+        testbatches = 0
+
+        print ("  On train data ")
+        # Full pass over the training data set to see it classify data
+        while i < X_test.shape[0] - batch + 1:
+            # print (X_val[i:batch + i, ...].shape)
+            err, acc = val_fn(X_train[i:batch + i, ...], Y_train[i:batch + i])
+            i += batch
+            val_err += err
+            val_acc += acc
+            testbatches += 1
+
+        print("     test loss:" + str(val_err / testbatches))
+        print("     test accuracy:" + str(val_acc / testbatches * 100))
 
     # full pass over test data
 
     val_err = 0
     val_acc = 0
     batch = 5
+    valEpoch = 0
     i = 0
     # And a full pass over the validation data:
     while i < X_test.shape[0] - batch + 1:
@@ -239,10 +298,13 @@ def main(num_epochs=10):
         i += batch
         val_err += err
         val_acc += acc
+        valEpoch += 1
 
     print("Final results:")
-    print("  test loss:" + str(err))
-    print("  test accuracy:" + str(acc * 100))
+    print("  test loss:" + str(val_err / valEpoch))
+    print("  test accuracy:" + str(val_acc / valEpoch * 100))
+
+#    print (" max " + maxac + " at " + maxepoch)
 
     # predic = predict(X_test)
     # print (predic)
@@ -251,9 +313,9 @@ def main(num_epochs=10):
     # print (Y_test)
     # print (Y_test.shape)
 
-   # print (T.mean(T.eq(T.argmax(predic, axis=1), Y_test),
+    # print (T.mean(T.eq(T.argmax(predic, axis=1), Y_test),
     #              dtype=theano.config.floatX).eval())
 
 
 if __name__ == '__main__':
-    main(num_epochs=1100)
+    main(num_epochs=50)
